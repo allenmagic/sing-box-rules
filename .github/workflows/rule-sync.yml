@@ -2,7 +2,6 @@ name: Sync SRS Rule Files to Gitea
 
 on:
   schedule:
-    # 北京时间周三 20:00 = UTC 12:00
     - cron: '0 12 * * 3'
   workflow_dispatch:
 
@@ -24,7 +23,6 @@ jobs:
           wget -O rules/adblocksingbox.srs \
             "https://raw.githubusercontent.com/217heidai/adblockfilters/main/rules/adblocksingbox.srs"
 
-          echo "--- Downloaded files ---"
           ls -lh rules/
 
       - name: Push to Gitea
@@ -36,17 +34,47 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global init.defaultBranch "${GITEA_BRANCH}"
+
+          # 解析用户名和仓库名
+          GITEA_USER=$(echo "${GITEA_REPO}" | cut -d'/' -f1)
+          REPO_NAME=$(echo "${GITEA_REPO}" | cut -d'/' -f2)
 
           REMOTE_URL="${GITEA_URL}/${GITEA_REPO}.git"
           REMOTE_AUTH=$(echo "${REMOTE_URL}" | sed "s|://|://${GITEA_TOKEN}@|")
 
-          git clone --depth 1 --branch "${GITEA_BRANCH}" "${REMOTE_AUTH}" gitea-repo || {
-            mkdir gitea-repo && cd gitea-repo && git init && git checkout -b "${GITEA_BRANCH}"
+          # 尝试克隆，如果仓库不存在则通过 API 创建
+          if ! git clone --depth 1 --branch "${GITEA_BRANCH}" "${REMOTE_AUTH}" gitea-repo 2>/dev/null; then
+            echo "Repository not found, creating via Gitea API..."
+
+            HTTP_CODE=$(curl -s -o /tmp/api_resp.json -w "%{http_code}" \
+              -X POST "${GITEA_URL}/api/v1/user/repos" \
+              -H "Authorization: token ${GITEA_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"name\": \"${REPO_NAME}\",
+                \"private\": false,
+                \"default_branch\": \"${GITEA_BRANCH}\",
+                \"auto_init\": false
+              }")
+
+            if [ "$HTTP_CODE" = "201" ] || [ "$HTTP_CODE" = "409" ]; then
+              echo "Repository ready (HTTP ${HTTP_CODE})"
+            else
+              echo "Failed to create repository (HTTP ${HTTP_CODE}):"
+              cat /tmp/api_resp.json
+              exit 1
+            fi
+
+            # 初始化本地仓库
+            mkdir gitea-repo && cd gitea-repo
+            git init
+            git checkout -b "${GITEA_BRANCH}"
             git remote add origin "${REMOTE_AUTH}"
             cd ..
-          }
+          fi
 
-          # 同步到仓库根目录下的 rules/ 文件夹
+          # 同步文件
           mkdir -p gitea-repo/rules
           cp rules/*.srs gitea-repo/rules/
 
@@ -57,6 +85,6 @@ jobs:
           else
             TIMESTAMP=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
             git commit -m "chore: update srs rule files [${TIMESTAMP}]"
-            git push origin "${GITEA_BRANCH}"
+            git push -u origin "${GITEA_BRANCH}"
             echo "Push completed."
           fi
