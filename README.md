@@ -24,7 +24,7 @@
 这些文件会先下载到 GitHub Actions 运行环境中的 `rules/` 目录，然后复制到目标 Gitea 仓库的：
 
 ```text
-rootfs/etc/sing-box/rules
+rules/
 ```
 
 ## 工作流说明
@@ -35,7 +35,7 @@ rootfs/etc/sing-box/rules
 
 ### 触发方式
 
-- 定时执行：每周三北京时间 20:00
+- 定时执行：每周四北京时间 20:00
 - 手动执行：通过 GitHub Actions 的 `workflow_dispatch`
 
 说明：GitHub Actions 的 `cron` 使用 UTC 时区，当前配置 `0 12 * * 3` 对应北京时间每周三 20:00。
