@@ -25,6 +25,58 @@ jobs:
 
           ls -lh rules/
 
+      - name: Install sing-box
+        env:
+          SING_BOX_VERSION: 1.12.20
+        run: |
+          mkdir -p "${HOME}/.local/bin" /tmp/sing-box
+          curl -fsSL -o /tmp/sing-box.tar.gz \
+            "https://github.com/SagerNet/sing-box/releases/download/v${SING_BOX_VERSION}/sing-box-${SING_BOX_VERSION}-linux-amd64.tar.gz"
+          tar -xzf /tmp/sing-box.tar.gz -C /tmp/sing-box --strip-components=1
+          install /tmp/sing-box/sing-box "${HOME}/.local/bin/sing-box"
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+          "${HOME}/.local/bin/sing-box" version
+
+      - name: Compile local JSON rule sets
+        shell: bash
+        run: |
+          if [ ! -d config ]; then
+            echo "No config directory found, skip local JSON compilation."
+            exit 0
+          fi
+
+          shopt -s nullglob
+          json_files=(config/*.json)
+          if [ "${#json_files[@]}" -eq 0 ]; then
+            echo "No local JSON rule sets found, skip local compilation."
+            exit 0
+          fi
+
+          failed_files=()
+          mkdir -p /tmp/sing-box-compile-logs
+
+          for json_file in "${json_files[@]}"; do
+            output_file="rules/$(basename "${json_file}" .json).srs"
+            error_log="/tmp/sing-box-compile-logs/$(basename "${json_file}" .json).log"
+
+            echo "Compiling ${json_file} -> ${output_file}"
+            if sing-box rule-set compile --output "${output_file}" "${json_file}" >"${error_log}" 2>&1; then
+              echo "Compiled ${json_file} successfully."
+            else
+              failed_files+=("${json_file}")
+              echo "::warning file=${json_file}::Failed to compile ${json_file}; skipped this file."
+              echo "Compile error for ${json_file}:"
+              cat "${error_log}"
+              rm -f "${output_file}"
+            fi
+          done
+
+          if [ "${#failed_files[@]}" -gt 0 ]; then
+            echo "::warning::Local JSON compilation completed with failures: ${failed_files[*]}"
+          fi
+
+          ls -lh rules/
+
       - name: Push to Gitea
         env:
           GITEA_URL: ${{ secrets.GITEA_URL }}
