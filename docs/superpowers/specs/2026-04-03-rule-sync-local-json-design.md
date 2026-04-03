@@ -1,125 +1,125 @@
-# Rule Sync Local JSON Compilation Design
+# Rule Sync 本地 JSON 编译设计
 
-## Summary
+## 概要
 
-Extend `.github/workflows/rule-sync.yml` so the workflow compiles every `config/*.json` file into a same-name `.srs` file with `sing-box`, stages those generated rule sets together with the downloaded upstream `.srs` files, and pushes only `.srs` artifacts to the target Gitea repository under `rules/`.
+扩展 `.github/workflows/rule-sync.yml`，使工作流在运行时将 `config/*.json` 中的每个文件通过 `sing-box` 编译为同名 `.srs` 文件，并与下载得到的上游 `.srs` 文件一起暂存，最终仅将 `.srs` 产物推送到目标 Gitea 仓库的 `rules/` 目录。
 
-Compilation failures for individual JSON files must not fail the workflow. The workflow should emit warnings for failed files, continue compiling the rest, and still push any successfully generated `.srs` files plus the downloaded upstream `.srs` files.
+单个 JSON 文件的编译失败不应导致整个工作流失败。工作流应对失败文件输出 warning，继续编译剩余文件，并仍然推送所有成功生成的 `.srs` 文件以及下载成功的上游 `.srs` 文件。
 
-## Current State
+## 当前状态
 
-- The workflow downloads three upstream `.srs` files into a temporary `rules/` directory.
-- The workflow clones or creates the target Gitea repository and copies `rules/*.srs` into `gitea-repo/rules/`.
-- The repository contains local source rule definitions in `config/`, currently including `config/ai-proxy-list.json`.
-- README content is partially out of sync with the actual workflow: the cron explanation and destination path text do not fully match the current YAML.
+- 当前工作流会将 3 个上游 `.srs` 文件下载到临时目录 `rules/`。
+- 当前工作流会克隆或创建目标 Gitea 仓库，并将 `rules/*.srs` 复制到 `gitea-repo/rules/`。
+- 当前仓库在 `config/` 目录下维护本地源码规则集，目前已有 `config/ai-proxy-list.json`。
+- `README.md` 的部分描述与实际工作流不完全一致，尤其是 cron 说明和目标路径说明。
 
-## Goals
+## 目标
 
-- Compile every `config/*.json` file to `rules/<basename>.srs` during the workflow run.
-- Keep the final push contract unchanged: only `.srs` files are pushed to `gitea-repo/rules/`.
-- Continue processing other JSON files when one compile fails.
-- Surface compile failures clearly in workflow logs as warnings.
-- Update documentation so operators understand both upstream downloads and local JSON compilation.
+- 在工作流运行时，将每个 `config/*.json` 编译为 `rules/<basename>.srs`。
+- 保持最终推送契约不变，仍然只向 `gitea-repo/rules/` 推送 `.srs` 文件。
+- 当某个 JSON 编译失败时，继续处理其他 JSON 文件。
+- 在工作流日志中清晰暴露编译失败，并以 warning 形式提示。
+- 更新文档，使维护者能明确理解“上游下载 + 本地 JSON 编译”的整体同步行为。
 
-## Non-Goals
+## 非目标
 
-- Pushing source JSON files to Gitea.
-- Introducing a separate build script or local test harness.
-- Changing the existing Gitea repository bootstrap logic.
-- Changing the target sync directory from `rules/`.
+- 不将源 JSON 文件推送到 Gitea。
+- 不引入单独的构建脚本或本地测试框架。
+- 不修改现有 Gitea 仓库初始化与创建逻辑。
+- 不修改目标同步目录 `rules/`。
 
-## Proposed Workflow Changes
+## 拟议的工作流改动
 
-### 1. Install `sing-box`
+### 1. 安装 `sing-box`
 
-Add a dedicated step after the upstream download step to install a pinned `sing-box` Linux binary inside the GitHub Actions runner.
+在下载上游规则文件之后新增一个独立步骤，在 GitHub Actions runner 中安装固定版本的 `sing-box` Linux 二进制。
 
-Design constraints:
+设计约束：
 
-- Use an explicit pinned version rather than `latest` to keep runs reproducible.
-- Download from the official GitHub release artifacts for Linux AMD64.
-- Place the executable in a path available to subsequent workflow steps.
+- 使用固定版本而不是 `latest`，保证运行结果可复现。
+- 从官方 GitHub Releases 的 Linux AMD64 产物下载。
+- 将可执行文件放到后续步骤可直接调用的路径中。
 
-### 2. Compile Local JSON Rule Sets
+### 2. 编译本地 JSON 规则集
 
-Add a step after `sing-box` installation that:
+在 `sing-box` 安装完成后新增一个步骤，用于：
 
-- Checks whether `config/` exists.
-- Iterates over `config/*.json`.
-- For each JSON file, computes the target output as `rules/<basename>.srs`.
-- Runs `sing-box rule-set compile --output "<target>" "<source>"`.
+- 检查 `config/` 目录是否存在。
+- 遍历 `config/*.json`。
+- 对每个 JSON 文件计算输出目标 `rules/<basename>.srs`。
+- 执行 `sing-box rule-set compile --output "<target>" "<source>"`。
 
-Behavior rules:
+行为要求：
 
-- If no JSON files exist, log a short message and continue successfully.
-- If compilation succeeds, retain the generated `.srs` in `rules/`.
-- If compilation fails, do not exit the step immediately.
-- Emit a GitHub Actions warning for the failed file and continue to the next file.
-- At the end of the step, emit a summary warning if one or more files failed.
+- 如果没有任何 JSON 文件，输出简短日志并成功继续。
+- 如果编译成功，则保留生成的 `.srs` 文件到 `rules/`。
+- 如果单个文件编译失败，不立即退出当前步骤。
+- 对失败文件输出 GitHub Actions warning，并继续处理下一个文件。
+- 步骤结束时，如果存在失败项，再额外输出一次汇总 warning。
 
-### 3. Preserve Existing Push Model
+### 3. 保持现有推送模型
 
-Keep the Gitea sync step structurally the same:
+保持 Gitea 同步步骤的整体结构不变：
 
-- Continue cloning or creating the target repository.
-- Continue copying `rules/*.srs` into `gitea-repo/rules/`.
-- Continue committing and pushing only when the target repo contents actually changed.
+- 继续克隆或创建目标仓库。
+- 继续将 `rules/*.srs` 复制到 `gitea-repo/rules/`。
+- 继续仅在目标仓库内容发生变化时才提交并推送。
 
-This preserves compatibility with the current destination layout and avoids mixing source files into the output repository.
+这样可以保持目标仓库目录结构兼容，也避免将源文件混入产物仓库。
 
-## Failure Handling
+## 失败处理策略
 
-### Download Failures
+### 下载失败
 
-Downloaded upstream `.srs` files should continue using the existing failure behavior. If an upstream download command fails, the workflow run fails as it does today.
+对于上游 `.srs` 文件下载，保持当前失败语义不变。如果某个上游下载命令失败，整个工作流仍按现有行为直接失败。
 
-### Local Compilation Failures
+### 本地编译失败
 
-Compilation failures are soft failures:
+本地编译失败属于软失败：
 
-- The failed JSON file does not produce or update an `.srs` artifact.
-- The workflow logs a warning for that file.
-- Other JSON files continue compiling.
-- The workflow still proceeds to the push step.
+- 编译失败的 JSON 文件不会产出或更新对应 `.srs` 文件。
+- 工作流会为该文件输出 warning。
+- 其他 JSON 文件继续编译。
+- 工作流仍继续进入 push 步骤。
 
-This ensures that one broken local source file does not block the delivery of other valid local rules or downloaded upstream rules.
+这样可以保证单个本地规则源损坏时，不会阻塞其他有效本地规则或上游下载规则的交付。
 
-## Logging
+## 日志要求
 
-Workflow logs should make these states obvious:
+工作流日志需要清楚展示以下状态：
 
-- `sing-box` installation version.
-- Which JSON file is currently being compiled.
-- Which files compiled successfully and their target names.
-- Which files failed and were skipped.
-- Whether the workflow found no local JSON files.
+- 当前安装的 `sing-box` 版本。
+- 当前正在编译哪个 JSON 文件。
+- 哪些文件编译成功以及生成的目标文件名。
+- 哪些文件编译失败并被跳过。
+- 是否未发现本地 JSON 文件。
 
-GitHub Actions warning annotations should be used for compile failures so they are visible in the run summary.
+对于编译失败，应使用 GitHub Actions warning annotation，以便在运行结果摘要中清晰可见。
 
-## Documentation Updates
+## 文档更新
 
-Update `README.md` to reflect the actual workflow behavior:
+更新 `README.md` 以反映真实工作流行为：
 
-- Mention that the workflow now handles both downloaded `.srs` files and locally compiled `config/*.json` rule sets.
-- State clearly that only `.srs` artifacts are pushed to Gitea.
-- Document that local JSON compile failures produce warnings and do not stop the sync.
-- Correct the destination path description to `rules/`.
-- Correct the cron explanation so it matches the actual cron expression in `.github/workflows/rule-sync.yml`.
+- 说明工作流现在同时处理“下载的 `.srs` 文件”和“由 `config/*.json` 编译得到的本地规则集”。
+- 明确只有 `.srs` 产物会被推送到 Gitea。
+- 说明本地 JSON 编译失败只会产生 warning，不会中断整体同步。
+- 将目标路径说明修正为 `rules/`。
+- 将 cron 说明修正为与 `.github/workflows/rule-sync.yml` 中的实际表达式一致。
 
-## Validation Plan
+## 验证计划
 
-Because this repository has no automated test suite, validation is workflow-focused:
+由于当前仓库没有自动化测试套件，本次验证以工作流行为为主：
 
-1. Review the rendered workflow YAML for syntax regressions.
-2. Review the shell loop to confirm it correctly handles zero, one, and many JSON files.
-3. Confirm the compile command maps `config/foo.json` to `rules/foo.srs`.
-4. Confirm failed compiles produce warnings without stopping the job.
-5. Confirm the push step still copies only `rules/*.srs`.
-6. Manually trigger the GitHub Actions workflow after merge to verify real runner behavior and the `sing-box` download path.
+1. 检查渲染后的 workflow YAML，确认没有语法回归。
+2. 检查 shell 循环，确认它能正确处理 0 个、1 个和多个 JSON 文件。
+3. 确认编译命令会将 `config/foo.json` 映射为 `rules/foo.srs`。
+4. 确认单个编译失败只产生 warning，不会中断整个 job。
+5. 确认 push 步骤仍然只复制 `rules/*.srs`。
+6. 合并后手动触发 GitHub Actions 工作流，验证真实 runner 中的 `sing-box` 下载路径和执行行为。
 
-## Implementation Notes
+## 实现说明
 
-- Keep shell variable expansion quoted as `"${VAR}"`.
-- Prefer simple POSIX-compatible shell patterns in the workflow step.
-- Avoid printing authenticated remote URLs or tokens in logs.
-- Keep the workflow changes localized to `.github/workflows/rule-sync.yml` and the matching README updates.
+- 在 shell 中保持变量展开使用 `"${VAR}"` 形式。
+- 在 workflow 步骤里优先使用简单、可维护的 shell 写法。
+- 避免在日志中打印带认证信息的远程地址或 token。
+- 将改动范围控制在 `.github/workflows/rule-sync.yml` 及对应的 README 更新之内。
