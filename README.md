@@ -51,13 +51,14 @@ rules/
 ### 执行流程
 
 1. 创建临时目录 `rules/`
-2. 使用 `wget` 下载上游 `.srs` 文件
-3. 下载并安装固定版本的 `sing-box`
-4. 将 `config/*.json` 编译为对应的 `.srs` 文件
-5. 如果某个本地 JSON 编译失败，则输出 warning 和具体错误日志，并继续处理剩余文件
-6. 使用 `GITEA_URL`、`GITEA_REPO` 和 `GITEA_TOKEN` 克隆目标 Gitea 仓库
-7. 将所有 `.srs` 文件复制到 `gitea-repo/rules`
-8. 若检测到变更，则自动提交并推送到目标分支
+2. 使用 `actions/checkout` 拉取当前仓库内容，确保 `config/*.json` 可用
+3. 使用 `wget` 下载上游 `.srs` 文件
+4. 下载并安装固定版本的 `sing-box`
+5. 将 `config/*.json` 编译为对应的 `.srs` 文件
+6. 如果某个本地 JSON 编译失败，则输出 warning 和具体错误日志，并继续处理剩余文件
+7. 使用 `GITEA_URL`、`GITEA_REPO` 和 `GITEA_TOKEN` 克隆目标 Gitea 仓库
+8. 将所有 `.srs` 文件复制到 `gitea-repo/rules`
+9. 若检测到变更，则自动提交并推送到目标分支
 
 ## GitHub Secrets 配置
 
