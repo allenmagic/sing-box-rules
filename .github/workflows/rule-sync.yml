@@ -2,7 +2,7 @@ name: Sync SRS Rule Files to Gitea
 
 on:
   schedule:
-    - cron: '0 12 * * 4'
+    - cron: '0 12 * * *'
   workflow_dispatch:
 
 jobs:
