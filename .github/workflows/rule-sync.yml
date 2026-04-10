@@ -26,6 +26,12 @@ jobs:
           wget -O rules/adblocksingbox.srs \
             "https://raw.githubusercontent.com/217heidai/adblockfilters/main/rules/adblocksingbox.srs"
 
+          wget -O rules/geosite-google.srs \
+            "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-google.srs"
+
+          wget -O rules/geosite-github.srs \
+            "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-github.srs"
+
           ls -lh rules/
 
       - name: Install sing-box
