@@ -13,7 +13,9 @@
         "docker.io",
         "docker-registry.com",
         "sing-box.sagernet.org",
-        "google.com.hk"
+        "google.com.hk",
+        "ghcr.io",
+        "gmail.com"
       ],
       "domain_suffix": [
         ".github.com",
@@ -25,7 +27,9 @@
         ".docker-registry.com",
         ".openai.com",
         ".sing-box.sagernet.org",
-        ".google.com.hk"
+        ".google.com.hk",
+        ".ghcr.io",
+        ".gmail.com"
       ]
     }
   ]
